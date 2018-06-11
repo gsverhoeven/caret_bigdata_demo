@@ -47,18 +47,15 @@ generateData <- function(nsize, relevance, interaction = 0){
 }
 ```
 
-# Set train control
+# Set train control and tuning grid search
 
 ```{r}
 train.control <- trainControl(method = "repeatedcv", 
                               number = 5, repeats = 6, 
                               savePredictions = F)
 
-fullrun <- 1
 
-set.seed(123)
-
-# tuning pars mtry, splitrule, min.node.size (hoger wordt niet beter)
+# tuning pars mtry, splitrule, min.node.size
 rf.grid <- expand.grid(mtry = 3, 
                        splitrule = "gini",
                        min.node.size = 1)
@@ -76,6 +73,7 @@ repeats <- 30
 myres <- data.frame()
 
 set.seed(1)
+
 if(fullrun){
   z <- 1
   for(i in 1:length(sample_size_vec)){
@@ -96,10 +94,12 @@ if(fullrun){
   }
   colnames(myres) <- c("Sample_size", "repeat", "Mean_accuracy")
   myres <- data.table(myres)
-myres <- myres[, Mean_accuracy := Mean_accuracy * 100]
+  myres <- myres[, Mean_accuracy := Mean_accuracy * 100]
   saveRDS(myres, file = "output/myres.rds")
 } else { myres <- readRDS("output/myres.rds") }
 ```
+
+# Plot result
 
 ```{r}
 res <- myres[, .(Min = min(Mean_accuracy),
@@ -109,9 +109,10 @@ res$order <- 1:nrow(res)
 
 
 gp <- ggplot(myres, aes(x = Sample_size , y = Mean_accuracy)) +
-#geom_errorbar(aes(ymin = Min, ymax = Max)) +
-geom_point(size = 1, col = "black", position = "jitter") + ylim(0, 100) + ylab("cross-validated test accuracy") + xlab("Sample size") +
-ggtitle("Repeat draws from big data set") #+ geom_vline(xintercept = sample_size_vec, color = "blue") 
+geom_point(size = 1, col = "black", position = "jitter") + ylim(0, 100) + 
+  ylab("cross-validated test accuracy") + 
+  xlab("Sample size") +
+  ggtitle("Repeat draws from big data set") 
   
 gp
 ```
