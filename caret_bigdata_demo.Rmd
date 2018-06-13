@@ -1,7 +1,7 @@
 ---
-title: "Caret bigdata demo"
+title: "Optimal sample size for machine learning using Progressive Sampling"
 author: "Gertjan Verhoeven"
-date: "5 juni 2018"
+date: "13 juni 2018"
 output: pdf_document
 ---
 
@@ -16,7 +16,7 @@ library(ranger)
 # Summary
 
 With big data sets and relatively simple models, we can have (much) more data than we actually need to get stable estimates.
-The goal of this notebook is to demonstrate how one would determine, using the `caret` package, what the required minimum sample size is to get stable estimates. Using such a curve, we can determine the optimal trade-off between computation time and estimate accuracy.
+The goal of this notebook is to demonstrate a heuristic procedure to determine the optimal sample size to get estimates with a predetermined level of accuracy. This involves plotting accuracy versus sample size. By using progresively increasing sample sizes (i.e. each time doubling the data size), we can efficiently find the point where the benefit of the additional accuracy no longer outweights the additional computational cost. 
 
 We mimick the process of grabbing a new random sample from a big data set by repeatedly generating simulated data from the same Data generating process. We pick a sequence of sample sizes, starting out small (say a 100 datapoints) and each time roughly doubling the amount.
 
@@ -46,6 +46,24 @@ generateData <- function(nsize, relevance, interaction = 0){
   my_df
 }
 ```
+
+# Real dataset: Wine Quality
+
+```{r}
+fullrun <- 0
+
+if(fullrun){
+  url <- 'https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv'
+  wine <- read.table(url, sep = ';', header = TRUE)
+  #head(wine)
+  wine$taste <- ifelse(wine$quality < 6, 'bad', 'good')
+  wine$taste[wine$quality == 6] <- 'normal'
+  wine$taste <- as.factor(wine$taste)
+  wine$quality <- NULL
+  saveRDS(wine, "wine.rds")
+} else { wine <- readRDS("wine.rds")}
+```
+
 
 # Set train control and tuning grid search
 
@@ -112,10 +130,67 @@ gp <- ggplot(myres, aes(x = Sample_size , y = Mean_accuracy)) +
 geom_point(size = 1, col = "black", position = "jitter") + ylim(0, 100) + 
   ylab("cross-validated test accuracy") + 
   xlab("Sample size") +
-  ggtitle("Repeat draws from big data set") 
+  ggtitle("Repeat draws from big data set") + geom_smooth(fill = NA)
   
 gp
 ```
 
 
+# Run calculation for Wine Quality
 
+```{r}
+fullrun <- 0
+
+sample_size_vec <- c(20, 100, 200, 500, 1000, 2000, 4898)
+repeats <- 30
+
+myres <- data.frame()
+
+set.seed(1)
+
+if(fullrun){
+  z <- 1
+  for(i in 1:length(sample_size_vec)){
+      for(j in 1:repeats){
+        # grab a new sample from our unlimited big data set
+        my_sample <- sample(1:nrow(wine), sample_size_vec[i])
+        my_df <- wine[my_sample,]
+        caret_fit <- train(taste ~ ., 
+                               data = my_df,
+                               method = "ranger",
+                               trControl = train.control,
+                               tuneGrid = rf.grid)
+        myres[z,1]<- sample_size_vec[i]
+        myres[z,2] <- j
+        myres[z,3] <- mean(caret_fit$resample$Accuracy)
+        z <- z + 1
+      }
+  }
+  colnames(myres) <- c("Sample_size", "repeat", "Mean_accuracy")
+  myres <- data.table(myres)
+  myres <- myres[, Mean_accuracy := Mean_accuracy * 100]
+  saveRDS(myres, file = "output/myres2.rds")
+} else { myres <- readRDS("output/myres2.rds") }
+```
+
+# Plot result
+
+```{r}
+res <- myres[, .(Min = min(Mean_accuracy),
+                 Mean = mean(Mean_accuracy),
+                 Max = max(Mean_accuracy)), .(Sample_size)]
+res$order <- 1:nrow(res)
+
+
+gp <- ggplot(myres, aes(x = Sample_size , y = Mean_accuracy)) +
+geom_point(size = 1, col = "black", position = "jitter") + ylim(0, 100) + 
+  ylab("cross-validated test accuracy") + 
+  xlab("Sample size") +
+  ggtitle("Repeat draws from big data set") + geom_smooth(fill = NA)
+  
+gp
+```
+
+# References
+
+* Provost, Jensen & Oates (1999), Efficient progressive sampling,  Proceedings of the fifth ACM SIGKDD International conference on Knowledge discovery and data mining.
