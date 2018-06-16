@@ -138,14 +138,32 @@ gp
 
 # Run calculation for Wine Quality
 
-```{r}
-fullrun <- 0
+Todo: split sample in ten equal sized parts outside of train.
+This makes sure that the ten "samples" from the big data set are uncorrelated.
+Also understand behavior at low sample sizes.
 
-sample_size_vec <- c(20, 100, 200, 500, 1000, 2000, 4898)
-repeats <- 30
+ranger throws error:
+"There were missing values in resampled performance measures."
+
+With 20 samples, and removal of near zero variance predictors, we do not expect problems with predicting on the test fold.
+This likely happens when the data point with the "good" label is in test.
+The ranger model then fails?
+
+```{r}
+train.control <- trainControl(method = "repeatedcv", 
+                              number = 5, repeats = 6, 
+                              savePredictions = F)
+```
+
+
+```{r}
+fullrun <- 1
+
+sample_size_vec <- c(20)
+repeats <- 3
 
 myres <- data.frame()
-
+wine$test_zero_var <- 0
 set.seed(1)
 
 if(fullrun){
@@ -155,9 +173,11 @@ if(fullrun){
         # grab a new sample from our unlimited big data set
         my_sample <- sample(1:nrow(wine), sample_size_vec[i])
         my_df <- wine[my_sample,]
+        print(j)
         caret_fit <- train(taste ~ ., 
                                data = my_df,
                                method = "ranger",
+                               preProcess = c("nzv"), # remove near zero variance
                                trControl = train.control,
                                tuneGrid = rf.grid)
         myres[z,1]<- sample_size_vec[i]
@@ -172,7 +192,7 @@ if(fullrun){
   saveRDS(myres, file = "output/myres2.rds")
 } else { myres <- readRDS("output/myres2.rds") }
 ```
-
+For sample 3, only one datapoint has label "good".
 # Plot result
 
 ```{r}
