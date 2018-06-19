@@ -18,7 +18,7 @@ library(ranger)
 With big data sets and relatively simple models, we can have (much) more data than we actually need to get stable estimates.
 The goal of this notebook is to demonstrate a heuristic procedure to determine the optimal sample size to get estimates with a predetermined level of accuracy. This involves plotting accuracy versus sample size. By using progresively increasing sample sizes (i.e. each time doubling the data size), we can efficiently find the point where the benefit of the additional accuracy no longer outweights the additional computational cost. 
 
-We demonstrate the principle both using simulated data (of which we have infinite amounts) as well as a real (not so big) dataset of wine tastes. When the samples we take are not small relative to the size of the data, random samples will be increasingly correlated, and we underestimate the test error variance.
+We demonstrate the principle both using simulated data (of which we have infinite amounts) as well as a real (not so big) dataset of wine tastes. When the samples we take are not small relative to the size of the data, random samples will be increasingly correlated, and we underestimate the test error variance. We solve this by partitioning the dataset in non-overlapping samples (sampling without replacement) first.
 
 # Simulated data
 
