@@ -83,7 +83,7 @@ rf.grid <- expand.grid(mtry = 3,
 # Run simulation
 
 ```{r}
-fullrun <- 0
+fullrun <- 1
 
 sample_size_vec <- c(20, 100, 500, 1000, 2000, 5000)
 repeats <- 30
@@ -91,6 +91,7 @@ repeats <- 30
 myres <- data.frame()
 
 set.seed(1)
+ptm <- proc.time()
 
 if(fullrun){
   z <- 1
@@ -115,6 +116,9 @@ if(fullrun){
   myres <- myres[, Mean_accuracy := Mean_accuracy * 100]
   saveRDS(myres, file = "output/myres.rds")
 } else { myres <- readRDS("output/myres.rds") }
+
+proc.time() - ptm
+
 ```
 
 # Plot result
