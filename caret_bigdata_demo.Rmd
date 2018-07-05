@@ -1,7 +1,7 @@
 ---
 title: "Optimal sample size for machine learning using Progressive Sampling"
 author: "Gertjan Verhoeven"
-date: "13 juni 2018"
+date: "19 juni 2018"
 output: pdf_document
 ---
 
@@ -17,6 +17,10 @@ library(ranger)
 
 With big data sets and relatively simple models, we can have (much) more data than we actually need to get stable estimates.
 The goal of this notebook is to demonstrate a heuristic procedure to determine the optimal sample size to get estimates with a predetermined level of accuracy. This involves plotting accuracy versus sample size. By using progresively increasing sample sizes (i.e. each time doubling the data size), we can efficiently find the point where the benefit of the additional accuracy no longer outweights the additional computational cost. 
+
+We demonstrate the principle both using simulated data (of which we have infinite amounts) as well as a real (not so big) dataset of wine tastes. When the samples we take are not small relative to the size of the data, random samples will be increasingly correlated, and we underestimate the test error variance. We solve this by partitioning the dataset in non-overlapping samples (sampling without replacement) first.
+
+# Simulated data
 
 We mimick the process of grabbing a new random sample from a big data set by repeatedly generating simulated data from the same Data generating process. We pick a sequence of sample sizes, starting out small (say a 100 datapoints) and each time roughly doubling the amount.
 
@@ -45,23 +49,6 @@ generateData <- function(nsize, relevance, interaction = 0){
   my_df <- data.frame(y = as.factor(y), x1, x2, x3, x4, x5)
   my_df
 }
-```
-
-# Real dataset: Wine Quality
-
-```{r}
-fullrun <- 0
-
-if(fullrun){
-  url <- 'https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv'
-  wine <- read.table(url, sep = ';', header = TRUE)
-  #head(wine)
-  wine$taste <- ifelse(wine$quality < 6, 'bad', 'good')
-  wine$taste[wine$quality == 6] <- 'normal'
-  wine$taste <- as.factor(wine$taste)
-  wine$quality <- NULL
-  saveRDS(wine, "wine.rds")
-} else { wine <- readRDS("wine.rds")}
 ```
 
 
@@ -139,29 +126,70 @@ geom_point(size = 1, col = "black", position = "jitter") + ylim(0, 100) +
 gp
 ```
 
+Here, the increase in sample size appears mostly to affect the reduction in variance of the test error, and not so much better learning from the training.
+This makes sense, since there is a only a simple signal present in the simulated data.
 
-# Run calculation for Wine Quality
+# Real dataset: Wine Quality
 
 ```{r}
 fullrun <- 0
 
-sample_size_vec <- c(20, 100, 200, 500, 1000, 2000, 4898)
-repeats <- 30
+if(fullrun){
+  url <- 'https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv'
+  wine <- read.table(url, sep = ';', header = TRUE)
+  #head(wine)
+  wine$taste <- ifelse(wine$quality < 6, 'bad', 'good')
+  wine$taste[wine$quality == 6] <- 'normal'
+  wine$taste <- as.factor(wine$taste)
+  wine$quality <- NULL
+  saveRDS(wine, "wine.rds")
+} else { wine <- readRDS("wine.rds")}
+```
+
+# Run calculation for Wine Quality
+
+The Wine Quality dataset consists of `r nrow(wine)` records.
+This means that if we want at least 10 independent samples, we are limited to a sample size that is one tenth of the full dataset.
+
+This also means that we have to partition the full dataset in ten separate samples, and performing the model fitting and repeated cross-validation on these separate samples. Here we choose 5 folds and repeated 2 times.
+
+```{r}
+train.control <- trainControl(method = "repeatedcv", 
+                              number = 5, repeats = 2, 
+                              savePredictions = F)
+```
+
+
+```{r}
+fullrun <- 0
+
+sample_size_vec <- c(20, 100, 200, 489)
+repeats <- 10
 
 myres <- data.frame()
-
+wine$test_zero_var <- 0
 set.seed(1)
 
 if(fullrun){
   z <- 1
   for(i in 1:length(sample_size_vec)){
+      # total number of datapoints required
+      size <- sample_size_vec[i] * repeats
+      # take datapoints, NO replacement
+      my_sample <- sample(1:nrow(wine), size, replace = F)
+      my_df <- wine[my_sample,]
+      # split in repeats
+      my_splits <- sample(1:repeats, nrow(my_df), replace = T)
+      
       for(j in 1:repeats){
-        # grab a new sample from our unlimited big data set
-        my_sample <- sample(1:nrow(wine), sample_size_vec[i])
-        my_df <- wine[my_sample,]
+        df_refactor <- my_df[my_splits == j,]
+        # caret complains if the outcome factor levels contain a factor that is not included in the data, so remove unused levels after sample creation
+        df_refactor$taste <- factor(df_refactor$taste)
+        #print(j)
         caret_fit <- train(taste ~ ., 
-                               data = my_df,
+                               data = df_refactor,
                                method = "ranger",
+                               preProcess = c("nzv"), # remove near zero variance
                                trControl = train.control,
                                tuneGrid = rf.grid)
         myres[z,1]<- sample_size_vec[i]
@@ -179,7 +207,7 @@ if(fullrun){
 
 # Plot result
 
-```{r}
+```{r warning = FALSE, message = FALSE}
 res <- myres[, .(Min = min(Mean_accuracy),
                  Mean = mean(Mean_accuracy),
                  Max = max(Mean_accuracy)), .(Sample_size)]
@@ -187,13 +215,17 @@ res$order <- 1:nrow(res)
 
 
 gp <- ggplot(myres, aes(x = Sample_size , y = Mean_accuracy)) +
-geom_point(size = 1, col = "black", position = "jitter") + ylim(0, 100) + 
+  geom_jitter(width = 0.5, height = 0.5) + ylim(0, 100) + 
   ylab("cross-validated test accuracy") + 
   xlab("Sample size") +
   ggtitle("Repeat draws from big data set") + geom_smooth(fill = NA)
   
 gp
 ```
+As in the simulated dataset, two effects can be seen:
+* the benefit of having more training data for better learning, as well as 
+* the reduction in variance in test error due to having more test data is visible
+
 
 # References
 
